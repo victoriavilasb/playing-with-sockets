@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -pedantic -pthread -std=c11
+CFLAGS = -Wall -Wextra -pedantic -pthread -D_POSIX_C_SOURCE=200809L -std=c11
 COMMON_OBJS = common.o
 SERVER_OBJS = server.o $(COMMON_OBJS)
 CLIENT_OBJS = client.o $(COMMON_OBJS)

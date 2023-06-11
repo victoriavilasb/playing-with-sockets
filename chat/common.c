@@ -8,8 +8,6 @@
 #include <arpa/inet.h>
 #include "common.h"
 
-#define BUFFER_SIZE 1024
-
 void
 fatal_error(const char *msg)
 {
@@ -50,5 +48,43 @@ int server_sockaddr_init(
         return 0;
     } else {
         return -1;
+    }
+}
+
+
+void
+send_and_recv_message(int sock, struct command_control *req, struct command_control * res)
+{
+    
+    int count = send(sock, req, sizeof(struct command_control), 0);
+    if (count <= 0) {
+        fatal_error("could not send message");
+    }
+
+    // empty receive message
+    memset(res, 0, sizeof(struct command_control));
+
+    unsigned total = 0;
+    while(1) {
+        count = recv(sock, res, sizeof(struct command_control), 0);
+        if (count < 0) {
+            fatal_error("recv() failed");
+        } 
+        if (count == 0) {
+            break;
+        } 
+
+        total += count;
+        break;
+    }
+}
+
+
+void
+send_message(int sock, struct command_control *req)
+{
+    int count = send(sock, req, sizeof(struct command_control), 0);
+    if (count <= 0) {
+        fatal_error("could not send message");
     }
 }
