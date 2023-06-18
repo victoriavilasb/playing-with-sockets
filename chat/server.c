@@ -10,7 +10,6 @@
 #include "./common.h"
 
 #define MAX_PENDING_CONNECTIONS 10
-#define MAX_CLIENT_CONNECTIONS 15
 
 struct connections {
     int count;
@@ -32,9 +31,11 @@ usage(char **argv)
 }
 
 void * client_thread(void *csock);
-void broadcast(struct connections *conns, struct command_control *req, int sender);
+void broadcast(struct connections *conns, struct command_control *req);
 void init_conns(struct connections *conns);
 int fill_available_conn(struct connections *conns, int csock);
+int find_client_sock_by_id(struct connections *conns, int id_client);
+void remove_client_from_list(struct connections *conns, int user_id);
 
 int
 main(int argc, char **argv)
@@ -90,6 +91,7 @@ main(int argc, char **argv)
 
         td.csock = csock;
         td.conns = &conns;
+
         pthread_create(&tid, NULL, client_thread, &td);
     }
 
@@ -120,7 +122,7 @@ client_thread(void *arg)
                 if (conns->count == 15) {
                     req.IdMsg = 7;
                     m = "User limit exceeded";
-                    memcpy(req.message, m, strlen(m)+1);
+                    memcpy(req.Message, m, strlen(m)+1);
 
                     send_message(data->csock, &req);
                     close(data->csock);
@@ -137,10 +139,48 @@ client_thread(void *arg)
 
                 printf("User %02d added\n", conn_number+1);
                 
-                sprintf(msg, "User %02d joined the group", conn_number+1);
-                memcpy(req.message, msg, strlen(msg)+1);     
+                sprintf(msg, "User %02d joined the group!", conn_number+1);
+                memcpy(req.Message, msg, strlen(msg)+1);     
 
-                broadcast(data->conns, &req, data->csock);
+                req.IdMsg = 6;
+                req.IdSender = conn_number+1;
+                broadcast(data->conns, &req);
+
+                // unicast message with all clients connected
+                char message[60];
+                cast_array_to_users_message(data->conns->clients, message);
+
+                memset(&req, 0, sizeof(req));
+                strcpy(req.Message, message);
+                req.IdMsg = 4;
+
+                send_message(data->csock, &req);
+
+                // enviar para o usuário todos os usuários que estão conectados
+                break;
+
+            case 2:
+                req.IdMsg = 8;
+                req.IdReceiver = res.IdSender;
+                m = "Removed Successfully";
+                memcpy(req.Message, m, strlen(m)+1);
+
+                // TODO: o cliente tem que saber quem ele ẽ
+                int client_sock = find_client_sock_by_id(conns, res.IdSender);
+
+                remove_client_from_list(data->conns, res.IdSender);
+
+                printf("User %02d removed", res.IdSender);
+
+                send_message(client_sock, &req);
+                
+                // broadcast to remaining users that user x is gone
+                memset(&req, 0, sizeof(req));
+
+                req.IdMsg = 6;
+                sprintf(msg, "User %02d left the group!", res.IdSender);
+                memcpy(req.Message, msg, strlen(msg)+1);  
+                broadcast(data->conns, &req);
                 break;
             default:
                 printf("invalid message");
@@ -156,8 +196,7 @@ client_thread(void *arg)
 }
 
 void
-broadcast(struct connections *conns, struct command_control *req, int sender) {
-    req->IdMsg = 6;
+broadcast(struct connections *conns, struct command_control *req) {
     for (int i = 0; i < MAX_CLIENT_CONNECTIONS; i++) {
         if (conns->clients[i] > 0) {
             send_message(conns->clients[i], req);
@@ -184,4 +223,16 @@ fill_available_conn(struct connections *conns, int csock)
     }
 
     return -1;
+}
+
+int
+find_client_sock_by_id(struct connections *conns, int id_client)
+{
+    return conns->clients[id_client-1];
+}
+
+void
+remove_client_from_list(struct connections *conns, int user_id)
+{
+    conns->clients[user_id-1] = -1;
 }

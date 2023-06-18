@@ -57,7 +57,7 @@ send_and_recv_message(int sock, struct command_control *req, struct command_cont
 {
     
     int count = send(sock, req, sizeof(struct command_control), 0);
-    if (count <= 0) {
+    if (count < 0) {
         fatal_error("could not send message");
     }
 
@@ -84,7 +84,40 @@ void
 send_message(int sock, struct command_control *req)
 {
     int count = send(sock, req, sizeof(struct command_control), 0);
-    if (count <= 0) {
+    if (count < 0) {
         fatal_error("could not send message");
+    }
+}
+
+
+void cast_users_message_to_array(const char* str, int array[]) {
+    const int max_size = 15;
+    int i = 0;
+    
+    for (int j=0; j < 15; j++) {
+        array[j] = -1;
+    }
+
+    char* str_copy = strdup(str);
+    char* token = strtok(str_copy, ",");
+    while (token != NULL && i < max_size) {
+        array[atoi(token)-1] = atoi(token)-1;
+        i++;
+        token = strtok(NULL, ",");
+    }
+
+    free(str_copy);
+}
+
+void cast_array_to_users_message(const int array[], char* str) {
+    int offset = 0;
+    for (int i = 0; i < MAX_CLIENT_CONNECTIONS; i++) {
+        if (array[i] != -1) {
+            offset += sprintf(str + offset, "%02d", array[i]);
+
+            if (i < MAX_CLIENT_CONNECTIONS - 1 && array[i + 1] != -1) {
+                offset += sprintf(str + offset, ",");
+            }
+        }
     }
 }

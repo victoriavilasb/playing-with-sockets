@@ -7,10 +7,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
+#include <pthread.h>
 #include "./common.h"
 
-int
-addr_parser(const char *addr, const char *portstr, struct sockaddr_storage *storage);
+int addr_parser(const char *addr, const char *portstr, struct sockaddr_storage *storage);
+void recv_message_handler(struct command_control res);
+struct command_control message_mount(char *message, int my_id);
+void * message_sender(void *arg);
+void * message_receiver(void *arg);
 
 void
 usage(char **argv)
@@ -20,12 +24,16 @@ usage(char **argv)
     exit(EXIT_FAILURE);
 }
 
+struct thread_data {
+    int sock;
+    int client_id;
+    int clients[MAX_CLIENT_CONNECTIONS];
+};
+
 
 int
 main(int argc, char **argv)
 {
-    int count;
-
     if (argc < 3) {
         usage(argv);
     }
@@ -52,72 +60,26 @@ main(int argc, char **argv)
     req.IdMsg = 1;
     send_message(sock, &req);
     
-    fd_set readSet;
-    FD_ZERO(&readSet);
-    FD_SET(sock, &readSet);
-    FD_SET(STDIN_FILENO, &readSet);
+    pthread_t send_thread, receive_thread;
+    struct thread_data data;
 
-    while (1) {
-        fd_set tempSet = readSet;
-
-        // Aguardar a atividade em um dos descritores de arquivo
-        if (select(sock + 1, &tempSet, NULL, NULL, NULL) < 0) {
-            perror("select() failed");
-            break;
-        }
-
-        if (FD_ISSET(sock, &tempSet)) {
-            struct command_control res;
-            ssize_t count = recv(sock, &res, sizeof(res), 0);
-            if (count <= 0) {
-                printf("recv() failed");
-                break;
-            }
-
-             if (res.IdMsg == 7) {
-                printf("%s\n", res.message);
-                exit(EXIT_FAILURE);
-            } 
-
-            printf("%s\n", res.message);
-        }
-
-        if (FD_ISSET(STDIN_FILENO, &tempSet)) {
-            char message[BUFFER_SIZE];
-            memset(message, 0, BUFFER_SIZE);
-
-            if (fgets(message, sizeof(message), stdin) == NULL) {
-                break;  // Sair do loop se não houver mais entrada
-            }
-
-            size_t message_len = strlen(message);
-
-            if (message_len > 0 && message[message_len - 1] == '\n') {
-                message[message_len - 1] = '\0';  // Remover o caractere de nova linha
-            }
-
-            count = send(sock, message, strlen(message)+1, 0);
-            if (count <= 0) {
-                fatal_error("could not send message");
-            }
-
-            memset(message, 0, BUFFER_SIZE);
-            unsigned total =0;
-            while(1) {
-                count = recv(sock, message + total, BUFFER_SIZE - total, 0);
-                if (count < 0) {
-                    fatal_error("recv() failed");
-                } 
-                if (count == 0) {
-                    break;
-                } 
-
-                total += count;
-                break;
-            }
-        }
+    data.sock = sock;
+    data.client_id = -1;
+    for (int i = 0; i < MAX_CLIENT_CONNECTIONS; i++) {
+        data.clients[i] = -1;
     }
+
+    int send_thread_result = pthread_create(&send_thread, NULL, message_sender, &data);
+    int receive_thread_result = pthread_create(&receive_thread, NULL, message_receiver, &data);
     
+    if (send_thread_result != 0 || receive_thread_result != 0) {
+        printf("Falha ao criar as threads.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    pthread_join(send_thread, NULL);
+    pthread_join(receive_thread, NULL);
+
     return 0;
 }
 
@@ -153,4 +115,89 @@ addr_parser(const char *addr, const char *portstr, struct sockaddr_storage *stor
     } else {
         return -1;
     }
+}
+
+struct command_control
+message_mount(char *message, int my_id)
+{
+    struct command_control req;
+    if(strstr(message, "close connection") != NULL) {
+        req.IdMsg = 2;
+        req.IdSender = my_id;
+    }
+
+    return req; 
+}
+
+void *
+message_sender(void *arg)
+{
+    for (;;) {
+        struct thread_data *data = (struct thread_data *)arg;
+
+        char cmd[BUFFER_SIZE];
+        memset(cmd, 0, BUFFER_SIZE);
+
+        if (fgets(cmd, sizeof(cmd), stdin) == NULL) {
+            continue;// Sair do loop se não houver mais entrada
+        }
+
+        struct command_control req = message_mount(cmd, data->client_id);
+
+        send_message(data->sock, &req);
+    }
+
+    pthread_exit(NULL);
+}
+
+void *
+message_receiver(void *arg)
+{
+    for (;;) {
+        struct thread_data *data = (struct thread_data *)arg;
+        struct command_control res;
+        ssize_t count = recv(data->sock, &res, sizeof(res), 0);
+        if (count < 0) {
+            printf("recv() failed");
+            continue;
+        }
+
+        if (count == 0) {
+            continue;
+        }
+
+        switch (res.IdMsg) {
+            case 7:
+                printf("%s\n", res.Message);
+                exit(EXIT_FAILURE);
+                continue;
+            case 8:
+                printf("%s\n", res.Message);
+                exit(EXIT_SUCCESS);
+                continue;
+            case 4:
+                cast_users_message_to_array(res.Message, data->clients);
+                continue;
+            case 6:
+                // aqui precisa fazer a lógica para tirar o usuário da cash do cliente
+                // e também adicionar quando for adicionado
+                if (data->client_id == -1) {
+                    
+                    data->client_id = res.IdSender;
+                }
+
+                data->clients[res.IdSender-1] = res.IdSender;
+                
+                printf("%s\n", res.Message);
+
+                continue;
+
+        }
+
+        memset(&res, 0, sizeof(res));
+
+    }
+
+    pthread_exit(NULL);
+    
 }

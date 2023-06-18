@@ -1,18 +1,13 @@
 
+#define MAX_CLIENT_CONNECTIONS 15
 #define MAX_FILENAME_SIZE 200
 #define BUFFER_SIZE 2048
-
-enum file_transmission_status {
-    STARTING,
-    IN_PROGRESS,
-    EXIT
-};
 
 struct command_control {
     int IdMsg;
     int IdSender;
     int IdReceiver;
-    char message[BUFFER_SIZE];
+    char Message[BUFFER_SIZE];
 };
 
 
@@ -20,12 +15,9 @@ void send_and_recv_message(int sock, struct command_control *req, struct command
 
 void send_message(int sock, struct command_control *req);
 
+void cast_users_message_to_array(const char* str, int array[]);
 
-struct file_header {
-    char filename[MAX_FILENAME_SIZE];
-    char content[BUFFER_SIZE];
-    enum file_transmission_status status;
-};
+void cast_array_to_users_message(const int array[], char* str);
 
 void
 fatal_error(const char *msg);
@@ -35,6 +27,3 @@ int server_sockaddr_init(
     const char* portstr,
     struct sockaddr_storage *storage
 );
-
-char *
-mount_message_to_send(const char* filename, char *content, enum file_transmission_status status);
