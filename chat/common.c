@@ -113,7 +113,7 @@ void cast_array_to_users_message(const int array[], char* str) {
     int offset = 0;
     for (int i = 0; i < MAX_CLIENT_CONNECTIONS; i++) {
         if (array[i] != -1) {
-            offset += sprintf(str + offset, "%02d", array[i]);
+            offset += sprintf(str + offset, "%02d", i+1);
 
             if (i < MAX_CLIENT_CONNECTIONS - 1 && array[i + 1] != -1) {
                 offset += sprintf(str + offset, ",");

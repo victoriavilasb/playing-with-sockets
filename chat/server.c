@@ -147,11 +147,11 @@ client_thread(void *arg)
                 broadcast(data->conns, &req);
 
                 // unicast message with all clients connected
-                char message[60];
-                cast_array_to_users_message(data->conns->clients, message);
+                cast_array_to_users_message(data->conns->clients, msg);
 
                 memset(&req, 0, sizeof(req));
-                strcpy(req.Message, message);
+                printf("%s\n", msg);
+                strcpy(req.Message, msg);
                 req.IdMsg = 4;
 
                 send_message(data->csock, &req);
@@ -160,24 +160,27 @@ client_thread(void *arg)
                 break;
 
             case 2:
+                // TODO: verificar se o user_id existe, se não enviar um erro
                 req.IdMsg = 8;
                 req.IdReceiver = res.IdSender;
                 m = "Removed Successfully";
                 memcpy(req.Message, m, strlen(m)+1);
+                conns->count--;
 
                 // TODO: o cliente tem que saber quem ele ẽ
                 int client_sock = find_client_sock_by_id(conns, res.IdSender);
 
                 remove_client_from_list(data->conns, res.IdSender);
 
-                printf("User %02d removed", res.IdSender);
+                printf("User %02d removed\n", res.IdSender);
 
                 send_message(client_sock, &req);
                 
                 // broadcast to remaining users that user x is gone
                 memset(&req, 0, sizeof(req));
 
-                req.IdMsg = 6;
+                req.IdMsg = 2;
+                req.IdSender = res.IdSender;
                 sprintf(msg, "User %02d left the group!", res.IdSender);
                 memcpy(req.Message, msg, strlen(msg)+1);  
                 broadcast(data->conns, &req);

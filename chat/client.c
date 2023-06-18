@@ -175,6 +175,16 @@ message_receiver(void *arg)
                 printf("%s\n", res.Message);
                 exit(EXIT_SUCCESS);
                 continue;
+            case 2:
+                // remover user
+                data->clients[res.IdSender-1] = -1;
+
+                char m[BUFFER_SIZE];
+                printf("%s\n", res.Message);
+                
+                cast_array_to_users_message(data->clients, m);
+                printf("users available: %s\n", m);
+                continue;
             case 4:
                 cast_users_message_to_array(res.Message, data->clients);
                 continue;
