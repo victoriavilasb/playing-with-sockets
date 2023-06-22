@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <sys/select.h>
 #include <pthread.h>
+#include <time.h>
 #include "./common.h"
 
 int addr_parser(const char *addr, const char *portstr, struct sockaddr_storage *storage);
@@ -118,12 +119,29 @@ addr_parser(const char *addr, const char *portstr, struct sockaddr_storage *stor
 }
 
 struct command_control
-message_mount(char *message, int my_id)
+message_mount(char *prompt, int my_id)
 {
     struct command_control req;
-    if(strstr(message, "close connection") != NULL) {
+    if(strstr(prompt, "close connection") != NULL) {
         req.IdMsg = 2;
         req.IdSender = my_id;
+    } else if (strstr(prompt, "send to") != NULL) {
+        int rc;
+        char message[BUFFER_SIZE];
+
+        sscanf(prompt, "send to %d \"%[^\"]\"", &rc, message);
+
+        req.IdMsg = 6;
+        req.IdSender = my_id;
+        req.IdReceiver = rc;
+        memcpy(req.Message, message, strlen(message)+1);
+
+        time_t rawtime;
+        struct tm *timeinfo;
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        
+        printf("P[%02d:%02d] -> %02d: %s\n", timeinfo->tm_hour, timeinfo->tm_min, rc, message);
     }
 
     return req; 
@@ -166,6 +184,8 @@ message_receiver(void *arg)
             continue;
         }
 
+        // se fui em mesma que mandei a mensagem, 
+        // então n vou imprimir
         switch (res.IdMsg) {
             case 7:
                 printf("%s\n", res.Message);

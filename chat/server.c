@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <time.h>
 #include <pthread.h>
 #include "./common.h"
 
@@ -106,9 +107,12 @@ client_thread(void *arg)
     struct thread_data *data = (struct thread_data *)arg;
     struct connections *conns = data->conns;
     struct command_control res, req;
-    char msg[BUFFER_SIZE];
+    char msg[BUFFER_SIZE], inner_message[1024];
     char * m;
     int conn_number;
+    time_t rawtime;
+    struct tm *timeinfo;
+    
 
     while (1) {
         count = recv(data->csock, &res, sizeof(res), 0);
@@ -185,6 +189,29 @@ client_thread(void *arg)
                 memcpy(req.Message, msg, strlen(msg)+1);  
                 broadcast(data->conns, &req);
                 break;
+
+            case 6:
+                // mensagem privada
+                time(&rawtime);
+                timeinfo = localtime(&rawtime); 
+                
+                if (res.IdReceiver != 0) {
+                    int client_sock = find_client_sock_by_id(conns, res.IdReceiver);
+                    req.IdMsg = 6;
+                    req.IdSender = res.IdSender;
+                    req.IdReceiver = res.IdReceiver;
+                    memcpy(inner_message, res.Message, strlen(res.Message)+1);
+
+                    snprintf(msg, sizeof(msg), "P[%02d:%02d] %02d: %s", timeinfo->tm_hour, timeinfo->tm_min, res.IdSender, inner_message);
+                    memcpy(req.Message, msg, strlen(msg)+1);
+
+                    send_message(client_sock, &req);
+                // mensagem pública
+                } else {
+
+                }
+
+                break;
             default:
                 printf("invalid message");
                 pthread_exit(NULL);
@@ -192,6 +219,7 @@ client_thread(void *arg)
 
         memset(&res, 0, sizeof(res));
         memset(msg, 0, strlen(msg)+1);
+        memset(inner_message, 0, strlen(inner_message)+1);
     }
     
     close(data->csock);
@@ -238,4 +266,16 @@ void
 remove_client_from_list(struct connections *conns, int user_id)
 {
     conns->clients[user_id-1] = -1;
+}
+
+int
+find_client_id_from_sock(struct connections *conns, int sock) 
+{
+    for(int i = 0; i < MAX_CLIENT_CONNECTIONS; i++) {
+        if (conns[i].clients[i] == sock) {
+            return i+1;
+        }
+    }
+
+    return -1;
 }
